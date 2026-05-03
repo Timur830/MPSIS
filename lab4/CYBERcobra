@@ -1,0 +1,80 @@
+module CYBERcobra (
+    input  logic         clk_i,
+    input  logic         rst_i,
+    input  logic [15:0]  sw_i,
+    
+    output logic [31:0]  out_o
+);
+    
+    logic [31:0] PC;
+    logic [31:0] new_pc; 
+    logic [31:0] offset;
+    
+    logic [31:0] a;
+    logic [31:0] b;
+    logic [31:0] result;
+    logic        flag
+    logic        WE
+    logic [31:0] WD;
+    logic [31:0] instruction;
+
+    always_comb begin
+        case((flag & instruction[30]) | instruction[31])
+            1'b0: jmp = 32'd4;
+            1'b1: jmp = 32'({$signed(instruction[12:5]), 2'b00});
+        endcase
+    end
+
+    fulladder32 adder (
+        .a_i    (PC),
+        .b_i    (offset),
+        .carry_i(1'b0),
+        .sum_o  (new_pc),
+        .carry_o()
+    );
+
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i)
+            PC <= 32'b0;
+        else
+            PC <= new_pc;
+    end
+
+    instr_mem imem (
+        .read_addr_i(PC),
+        .read_data_o(instruction)
+    );
+
+    always_comb begin
+        case(instruction[29:28])
+            2'b00: WD = 32'($signed(instruction[27:5]));
+            2'b01: WD = result;
+            2'b10: WD = 32'($signed(sw_i[15:0]));
+            2'b11: WD = 32'b0;
+        endcase
+    end
+
+    assign WE = ~(instruction[31] | instruction[30]);
+
+    register_file reg_file (
+        .clk_i         (clk_i),
+        .write_enable_i(WE),
+        .write_addr_i  (instruction[4:0]),
+        .read_addr1_i  (instruction[22:18]),
+        .read_addr2_i  (instruction[17:13]),
+        .write_data_i  (WD),
+        .read_data1_o  (a),
+        .read_data2_o  (b)
+    );
+
+    alu ALU (
+        .a_i     (a),
+        .b_i     (b),
+        .alu_op_i(instruction[27:23]),
+        .flag_o  (flag),
+        .result_o(result)
+    );
+
+    assign out_o = a;
+
+endmodule
